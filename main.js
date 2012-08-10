@@ -1,5 +1,6 @@
-function init() {
-  d3.csv('test_data.csv', display);
+function init(datafile,cond) {
+  d3.csv(datafile, display);
+  trialtypes = cond;
 }
 
 function display(rows) {
@@ -13,13 +14,18 @@ function display(rows) {
   var colors = d3.scale.category20();
   var trials_per_subject = d3.max(data, function(d) { return d.length; });
   var trial_count = data.length * trials_per_subject;
-  var types = ['sample1', 'sample2', 'target', 'foil', 'NotOnAOI'];
+  
+  if(trialtypes == 'comp') {
+	var types = ['sample1', 'sample2', 'target', 'foil', 'NotOnAOI'];
+} else if (trialtypes == 'singles'){var types = ['sample', 'target', 'foil', 'NotOnAOI'];
+}
+
   var bar_height = 30, bar_dist = 40, lgap = 55, rgap = 10, tgap = 80;
   var w = 1000, h = trial_count * bar_dist;
   max_t = get_max_time(data);
   map_time = d3.scale.linear().domain([0,max_t]).range([lgap, w]);
   var map_type = function(type) {
-    var types = {sample1: "blue", sample2: "lightblue", target: "green", foil: "red", NotOnAOI: "white"};
+    var types = {sample1: "blue", sample2:"lightblue", target: "green", foil: "red", NotOnAOI: "white", sample:"blue"};
     return types[type];
   }
   
@@ -181,7 +187,7 @@ function convert(rows) {
       data[s_id][t_id] = [];
       t0 = get_time(row);
     }
-    if (row.Switch == "NA" || row.Switch == "YES") {
+    if (row.Switch == "NA" || row.Switch == "YES" || data[s_id][t_id].length == 0) {
       last_fix = {type: row.AOI
                 ,t0: get_time(row)-t0
                 ,dur: 0
@@ -189,19 +195,26 @@ function convert(rows) {
       data[s_id][t_id].push(last_fix);
     } else if (row.Switch == "NO") {
       last_fix.dur = get_time(row) - t0 - last_fix.t0;
-      if (last_fix.acc != +row.ACC) throw "inconsistant ACC field found at line " + i;
+      if (last_fix.acc != +row.ACC) {
+	    console.log('row', i);
+		console.log('ACC was', last_fix.acc, 'but now its', row.ACC)
+		throw "inconsistant ACC field found at line " + i;
+	  }
     }
   }
+
+  console.log(data)
   
   for (var s=0; s<data.length; s++) {
     for (var t=0; t<data[s].length; t++) {
       var trial = data[s][t];
       if (!trial) { data[s][t] = []; continue; }
-//      var time = 0;
-//      for (var i=0; i<trial.length; i++) {
-//        trial[i].t0 = time;
-//        time += trial[i].dur;
-//      }      
+      // if there is a gap (saccade) between two fixations, increase the duration of the first fixation
+      // so include the saccade. We could also remove the saccade time intervals from the data, but this
+      // would alter the total length of the trial, which we don't want.
+      for (var i=0; i<trial.length-1; i++) {
+        trial[i].dur += trial[i+1].t0 - (trial[i].t0 + trial[i].dur);
+      }      
     }
   }
   return data;
